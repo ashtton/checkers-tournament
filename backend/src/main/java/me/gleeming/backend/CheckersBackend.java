@@ -3,14 +3,10 @@ package me.gleeming.backend;
 import com.corundumstudio.socketio.Configuration;
 import com.corundumstudio.socketio.SocketIOServer;
 import io.javalin.Javalin;
-import lombok.Getter;
-import lombok.Setter;
 import me.gleeming.backend.match.Match;
+import me.gleeming.backend.player.Player;
 
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Optional;
-import java.util.Random;
+import java.util.*;
 
 public class CheckersBackend {
 
@@ -20,6 +16,9 @@ public class CheckersBackend {
 
     public static void main(String[] args) throws InterruptedException {
         Javalin javalin = Javalin.create();
+
+        javalin.after(ctx -> ctx.header("Access-Control-Allow-Origin", "*")
+                .header("Access-Control-Allow-Headers", "*"));
 
         javalin.get("/room/{name}", ctx -> {
             Optional<Match> matchOptional = matches.stream()
@@ -37,11 +36,8 @@ public class CheckersBackend {
         javalin.post("/room/", ctx -> {
             Match match = new Match();
             match.setMatchId(String.valueOf((1 + random.nextInt(2)) * 10000 + random.nextInt(10000)));
+            matches.add(match);
             ctx.result(match.getMatchId());
-        });
-
-        javalin.post("/room/{name}/join", ctx -> {
-
         });
 
         javalin.start(7070);
@@ -52,8 +48,37 @@ public class CheckersBackend {
 
         SocketIOServer server = new SocketIOServer(config);
 
-        server.addEventListener("event1", String.class, (socketIOClient, s, ackRequest) -> {
-            System.out.println(s);
+        server.addEventListener("disband", String.class, ((socketIOClient, s, ackRequest) -> {
+            matches.stream().filter(match -> match.getMatchOwner() == socketIOClient.getSessionId())
+                    .forEach(match -> match.getPlayers().forEach(player -> server.getClient(player.getClientId()).sendEvent("lobbyDeleted")));
+        }));
+
+        server.addEventListener("join", String.class, (socketIOClient, s, ackRequest) -> {
+            String[] array = s.split(",");
+
+            String matchId = array[0];
+            String nickname = array[1];
+
+            Optional<Match> matchOptional = matches.stream()
+                    .filter(match -> match.getMatchId().equals(matchId))
+                    .findFirst();
+
+            if (matchOptional.isEmpty()) {
+                return;
+            }
+
+            Player player = new Player();
+            player.setClientId(socketIOClient.getSessionId());
+            player.setUsername(nickname);
+
+            if (matchOptional.get().getPlayers().size() == 0) {
+                player.setOwner(true);
+                matchOptional.get().setMatchOwner(player.getClientId());
+            }
+
+            matchOptional.get().getPlayers().add(player);
+
+            System.out.println(nickname + " has joined " + matchId);
         });
 
         server.addConnectListener(socketIOClient -> {
@@ -62,9 +87,18 @@ public class CheckersBackend {
 
         server.addDisconnectListener(socketIOClient -> {
             System.out.println(socketIOClient.getSessionId().toString() + " disconnected");
-            matches.stream().filter(match -> match.getClients().containsKey(socketIOClient.getSessionId()))
-                    .forEach(match -> match.getClients().remove(socketIOClient.getSessionId()));
+            matches.forEach(match -> match.getPlayers().removeIf(player -> player.getClientId() == socketIOClient.getSessionId()));
         });
+
+        new Timer().schedule(new TimerTask() {
+            @Override
+            public void run() {
+                matches.forEach(match -> match.getPlayers().forEach(player -> {
+                    server.getClient(player.getClientId()).sendEvent("updateGame", match);
+                    System.out.println("sent to " + player.getClientId());
+                }));
+            }
+        }, 0, 500);
 
         server.start();
         Thread.sleep(Integer.MAX_VALUE);

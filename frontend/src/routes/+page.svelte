@@ -2,16 +2,18 @@
     import {Socket} from "$lib/socket.js";
     import {goto} from "$app/navigation";
 
+    import Home from '$lib/pages/home.svelte'
+    import Lobby from '$lib/pages/lobby.svelte'
 
-    Socket.on('event2', (msg) => {
-        console.log(msg)
-    })
+    import {state} from '$lib/state'
+    import {game} from "$lib/state.js";
 
-    async function hello() {
-        await Socket.emit('event1', "hi")
-    }
 </script>
 
-<button on:click={() => hello()}>Click me!</button>
+{#if $state === "HOME"}
+    <Home />
+{/if}
 
-<button on:click={() => goto("/hi")}>next page</button>
+{#if $state === "LOBBY" && $game !== null}
+    <Lobby />
+{/if}
