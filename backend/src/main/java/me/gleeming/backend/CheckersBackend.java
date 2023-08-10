@@ -4,6 +4,7 @@ import com.corundumstudio.socketio.Configuration;
 import com.corundumstudio.socketio.SocketIOServer;
 import io.javalin.Javalin;
 import me.gleeming.backend.match.Match;
+import me.gleeming.backend.player.Message;
 import me.gleeming.backend.player.Player;
 
 import java.util.*;
@@ -53,6 +54,13 @@ public class CheckersBackend {
                     .forEach(match -> match.getPlayers().forEach(player -> server.getClient(player.getClientId()).sendEvent("lobbyDeleted")));
         }));
 
+        server.addEventListener("sendMessage", String.class, (((socketIOClient, s, ackRequest) -> {
+            matches.stream().filter(match -> match.getPlayers().stream().anyMatch(player -> player.getClientId() == socketIOClient.getSessionId()))
+                    .forEach(match -> match.getPlayers().forEach(player -> server.getClient(player.getClientId())
+                            .sendEvent("newMessage", new Message(match.getPlayers().stream().filter(p -> p.getClientId() == socketIOClient.getSessionId())
+                                    .findFirst().get().getUsername(), s, System.currentTimeMillis(), false))));
+        })));
+
         server.addEventListener("join", String.class, (socketIOClient, s, ackRequest) -> {
             String[] array = s.split(",");
 
@@ -95,7 +103,6 @@ public class CheckersBackend {
             public void run() {
                 matches.forEach(match -> match.getPlayers().forEach(player -> {
                     server.getClient(player.getClientId()).sendEvent("updateGame", match);
-                    System.out.println("sent to " + player.getClientId());
                 }));
             }
         }, 0, 500);

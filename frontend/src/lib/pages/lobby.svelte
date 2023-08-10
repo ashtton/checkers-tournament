@@ -1,4 +1,6 @@
 <script>
+    import ChatBox from '$lib/components/chatbox.svelte'
+
     import {game} from "$lib/state.js";
     import {Socket} from "$lib/socket.js";
 
@@ -20,3 +22,5 @@
     <button>Start tournament</button>
     <button on:click={() => disband()}>Disband lobby</button>
 {/if}
+
+<ChatBox />
